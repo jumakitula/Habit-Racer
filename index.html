@@ -15,11 +15,20 @@
     button:active { transform: scale(0.98); }
     .hidden { display: none !important; }
 
-    /* Host View */
-    #host-container { max-width: 900px; margin: 0 auto; }
+    /* Host View & Timer */
+    #host-container { max-width: 900px; margin: 0 auto; position: relative; }
+    #timer-display { font-size: 28px; font-weight: bold; color: #facc15; background: #1e293b; padding: 8px 20px; border-radius: 30px; display: inline-block; margin-bottom: 12px; border: 2px solid #eab308; box-shadow: 0 0 12px rgba(234, 179, 8, 0.4); }
     canvas { background: #0f172a; border-radius: 12px; width: 100%; border: 2px solid #38bdf8; box-shadow: 0 0 20px rgba(56, 189, 248, 0.2); }
     #leaderboard { margin-top: 15px; background: #1e293b; padding: 15px; border-radius: 8px; text-align: left; }
     .player-rank { display: flex; justify-content: space-between; padding: 8px; border-bottom: 1px solid #334155; }
+
+    /* Victory Modal / Winner Screen */
+    #winner-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.95); border-radius: 12px; display: flex; flex-direction: column; justify-content: center; align-items: center; border: 3px solid #22c55e; box-shadow: 0 0 30px rgba(34, 197, 94, 0.5); z-index: 10; }
+    #winner-screen h2 { color: #facc15; font-size: 32px; margin-bottom: 15px; text-shadow: 0 0 10px rgba(250, 204, 21, 0.5); }
+    .winner-box { background: #1e293b; padding: 15px 30px; border-radius: 12px; font-size: 22px; font-weight: bold; margin: 8px; width: 80%; border: 1px solid #334155; }
+    .rank-1 { color: #facc15; border-color: #facc15; font-size: 26px; }
+    .rank-2 { color: #cbd5e1; }
+    .rank-3 { color: #f97316; }
 
     /* Mobile Controls Layout */
     #player-game-wrapper { max-width: 420px; margin: 0 auto; }
@@ -74,7 +83,18 @@
 
   <!-- HOST DISPLAY -->
   <div id="host-container" class="hidden">
-    <canvas id="raceCanvas" width="800" height="400"></canvas>
+    <div id="timer-display">⏱️ Time Left: 05:00</div>
+    
+    <div style="position: relative;">
+      <canvas id="raceCanvas" width="800" height="400"></canvas>
+
+      <!-- WINNER SCREEN OVERLAY -->
+      <div id="winner-screen" class="hidden">
+        <h2>🏆 AUGUST GAME OVER! 🏆</h2>
+        <div id="winner-list" style="width: 100%; display: flex; flex-direction: column; align-items: center;"></div>
+      </div>
+    </div>
+
     <div id="leaderboard">
       <h3>🏆 Realtime Leaderboard</h3>
       <div id="ranks"></div>
@@ -108,10 +128,12 @@
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
     const playersRef = ref(db, 'players');
+    const gameStateRef = ref(db, 'gameState');
 
     let myPlayerId = null;
     let distance = 0;
     const FINISH_LINE = 1000;
+    let gameEnded = false;
 
     document.getElementById('btn-host').addEventListener('click', setupHost);
     document.getElementById('btn-player').addEventListener('click', setupPlayerView);
@@ -121,7 +143,9 @@
       document.getElementById('role-select').classList.add('hidden');
       document.getElementById('host-container').classList.remove('hidden');
       remove(playersRef); 
+      set(gameStateRef, { ended: false });
       startHostCanvas();
+      startTimer(300); // 300 seconds = 5 minutes
     }
 
     function setupPlayerView() {
@@ -141,11 +165,71 @@
 
       document.getElementById('player-join').classList.add('hidden');
       document.getElementById('player-game-wrapper').classList.remove('hidden');
+
+      // Listen for game end from host
+      onValue(gameStateRef, (snapshot) => {
+        const state = snapshot.val();
+        if (state && state.ended) {
+          gameEnded = true;
+        }
+      });
       
       startArcadeGame();
     }
 
-    // --- FULL ARCADE GAME ENGINE ---
+    // --- 5 MINUTE TIMER ENGINE ---
+    function startTimer(durationSeconds) {
+      let timer = durationSeconds;
+      const timerDisplay = document.getElementById('timer-display');
+
+      const interval = setInterval(() => {
+        let minutes = Math.floor(timer / 60);
+        let seconds = timer % 60;
+
+        minutes = minutes < 10 ? "0" + minutes : minutes;
+        seconds = seconds < 10 ? "0" + seconds : seconds;
+
+        timerDisplay.innerText = `⏱️ Time Left: ${minutes}:${seconds}`;
+
+        if (--timer < 0) {
+          clearInterval(interval);
+          timerDisplay.innerText = "⏱️ Time Left: 00:00 - GAME OVER!";
+          endGame();
+        }
+      }, 1000);
+    }
+
+    function endGame() {
+      gameEnded = true;
+      set(gameStateRef, { ended: true });
+
+      onValue(playersRef, (snapshot) => {
+        const playersData = snapshot.val() || {};
+        showWinners(playersData);
+      }, { onlyOnce: true });
+    }
+
+    function showWinners(playersData) {
+      const winnerScreen = document.getElementById('winner-screen');
+      const winnerList = document.getElementById('winner-list');
+      winnerList.innerHTML = "";
+
+      let sorted = Object.values(playersData).sort((a, b) => b.distance - a.distance);
+
+      if (sorted.length > 0) {
+        winnerList.innerHTML += `<div class="winner-box rank-1">🥇 1st Place: ${sorted[0].name} (${sorted[0].distance}m)</div>`;
+      }
+      if (sorted.length > 1) {
+        winnerList.innerHTML += `<div class="winner-box rank-2">🥈 2nd Place: ${sorted[1].name} (${sorted[1].distance}m)</div>`;
+      }
+      if (sorted.length > 2) {
+        winnerList.innerHTML += `<div class="winner-box rank-3">🥉 3rd Place: ${sorted[2].name} (${sorted[2].distance}m)</div>`;
+      }
+
+      winnerScreen.classList.remove('hidden');
+    }
+
+    // --- PLAYER ARCADE ENGINE ---
     function startArcadeGame() {
       const canvas = document.getElementById('gameCanvas');
       const ctx = canvas.getContext('2d');
@@ -166,7 +250,6 @@
       let keys = { left: false, right: false, up: false };
       let gravity = 0.5;
 
-      // Floating Platforms & Ground
       let platforms = [
         { x: 0, y: 210, w: 400, h: 30 },
         { x: 80, y: 160, w: 90, h: 12 },
@@ -174,7 +257,6 @@
         { x: 130, y: 75, w: 80, h: 12 }
       ];
 
-      // Interactive Game Elements
       let gems = [
         { x: 110, y: 130, w: 14, h: 14, label: "📚 Study", collected: false },
         { x: 260, y: 90, w: 14, h: 14, label: "🏋️ Gym", collected: false },
@@ -186,7 +268,6 @@
         { x: 100, y: 140, w: 18, h: 20, label: "🛌 Lazy", dir: 1 }
       ];
 
-      // Touch Controls Setup
       const bindTouch = (btnId, keyName) => {
         const btn = document.getElementById(btnId);
         btn.addEventListener('touchstart', (e) => { e.preventDefault(); keys[keyName] = true; });
@@ -212,16 +293,15 @@
       });
 
       function loop() {
-        if (distance >= FINISH_LINE) {
-          ctx.fillStyle = "#22c55e";
+        if (gameEnded) {
+          ctx.fillStyle = "#ef4444";
           ctx.font = "bold 22px sans-serif";
-          ctx.fillText("🏆 AUGUST GOAL COMPLETED!", 20, 120);
+          ctx.fillText("🛑 GAME OVER!", 120, 120);
           return;
         }
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // Player Input Handling
         if (keys.left) player.vx = -player.speed;
         else if (keys.right) player.vx = player.speed;
         else player.vx = 0;
@@ -231,16 +311,13 @@
           player.grounded = false;
         }
 
-        // Apply Gravity & Physics
         player.vy += gravity;
         player.x += player.vx;
         player.y += player.vy;
 
-        // Map Boundaries
         if (player.x < 0) player.x = 0;
         if (player.x + player.w > canvas.width) player.x = canvas.width - player.w;
 
-        // Platform Collisions
         player.grounded = false;
         platforms.forEach(plat => {
           if (
@@ -254,14 +331,12 @@
             player.y = plat.y - player.h;
           }
 
-          // Draw Platforms
           ctx.fillStyle = "#334155";
           ctx.fillRect(plat.x, plat.y, plat.w, plat.h);
           ctx.strokeStyle = "#475569";
           ctx.strokeRect(plat.x, plat.y, plat.w, plat.h);
         });
 
-        // Collect Habit Gems (+50m Goal Distance)
         gems.forEach(gem => {
           if (!gem.collected) {
             ctx.fillStyle = "#22c55e";
@@ -278,12 +353,11 @@
             ) {
               gem.collected = true;
               distance = Math.min(FINISH_LINE, distance + 60);
-              setTimeout(() => { gem.collected = false; }, 4000); // Respawns after 4s
+              setTimeout(() => { gem.collected = false; }, 4000);
             }
           }
         });
 
-        // Patrol Hazard Enemies (-25m Goal Distance)
         hazards.forEach(haz => {
           haz.x += haz.dir * 1.2;
           if (haz.x < 50 || haz.x > 320) haz.dir *= -1;
@@ -301,25 +375,21 @@
             player.y + player.h > haz.y
           ) {
             distance = Math.max(0, distance - 20);
-            player.x = 20; // Knockback reset
+            player.x = 20;
             player.y = 150;
           }
         });
 
-        // Draw Player Sprite
         ctx.fillStyle = player.color;
         ctx.fillRect(player.x, player.y, player.w, player.h);
-        // Eyes (direction indicator)
         ctx.fillStyle = "#fff";
         let eyeOffset = player.vx < 0 ? 3 : 11;
         ctx.fillRect(player.x + eyeOffset, player.y + 4, 4, 4);
 
-        // Passive Distance gain for active running
         if (player.vx !== 0) {
           distance = Math.min(FINISH_LINE, distance + 0.15);
         }
 
-        // Sync State
         document.getElementById('player-dist').innerText = Math.floor(distance);
         const myRef = ref(db, `players/${myPlayerId}`);
         update(myRef, { distance: Math.floor(distance) });
@@ -339,12 +409,18 @@
       onValue(playersRef, (snapshot) => {
         playersData = snapshot.val() || {};
         updateLeaderboard(playersData);
+
+        // Check if anyone reached 1000m to end game early
+        Object.values(playersData).forEach(p => {
+          if (p.distance >= FINISH_LINE && !gameEnded) {
+            endGame();
+          }
+        });
       });
 
       function render() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // Draw Finish Line
         ctx.fillStyle = "#ef4444";
         ctx.fillRect(750, 0, 10, canvas.height);
         ctx.fillStyle = "#fff";
