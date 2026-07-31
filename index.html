@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Habit Racer - August Goals</title>
+  <style>
+    * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; }
+    body { background: #0f172a; color: #fff; text-align: center; padding: 20px; }
+    h1 { margin-bottom: 10px; color: #38bdf8; }
+    .card { background: #1e293b; max-width: 500px; margin: 20px auto; padding: 25px; border-radius: 12px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3); }
+    input, button { width: 100%; padding: 12px; margin: 8px 0; border-radius: 8px; border: none; font-size: 16px; }
+    input { background: #334155; color: #fff; }
+    button { background: #0284c7; color: white; font-weight: bold; cursor: pointer; transition: 0.2s; }
+    button:hover { background: #0369a1; }
+    .hidden { display: none !important; }
+
+    /* Host Canvas & Leaderboard */
+    #host-container { max-width: 900px; margin: 0 auto; }
+    canvas { background: #1e293b; border-radius: 12px; width: 100%; border: 2px solid #334155; }
+    #leaderboard { margin-top: 15px; background: #1e293b; padding: 15px; border-radius: 8px; text-align: left; }
+    .player-rank { display: flex; justify-content: space-between; padding: 8px; border-bottom: 1px solid #334155; }
+
+    /* Player Interface */
+    #player-game { height: 60vh; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+    #tap-area { width: 100%; height: 250px; background: #0284c7; border-radius: 16px; display: flex; justify-content: center; align-items: center; font-size: 28px; font-weight: bold; user-select: none; cursor: pointer; box-shadow: 0 8px 0 #0369a1; }
+    #tap-area:active { transform: translateY(4px); box-shadow: 0 4px 0 #0369a1; }
+    .stat-box { font-size: 20px; margin-bottom: 15px; }
+  </style>
+</head>
+<body>
+
+  <h1>🏃 August Habit Racer 🏁</h1>
+
+  <!-- ROLE SELECTION -->
+  <div id="role-select" class="card">
+    <h3>Select Mode</h3>
+    <button id="btn-host">Host Game (Projector Screen)</button>
+    <button id="btn-player">Join as Player (Phone Screen)</button>
+  </div>
+
+  <!-- PLAYER JOIN FORM -->
+  <div id="player-join" class="card hidden">
+    <h3>Join the August Race</h3>
+    <input type="text" id="player-name" placeholder="Enter your name..." maxlength="12">
+    <button id="btn-start-racing">Start Racing!</button>
+  </div>
+
+  <!-- PLAYER GAME CONTROLS -->
+  <div id="player-game" class="card hidden">
+    <div class="stat-box">Distance: <span id="player-dist">0</span> / 1000m</div>
+    <div id="tap-area">TAP TO JUMP! 🚀</div>
+    <p style="margin-top: 15px; color: #94a3b8;">Avoid Procrastination, Catch Good Habits!</p>
+  </div>
+
+  <!-- HOST DISPLAY -->
+  <div id="host-container" class="hidden">
+    <canvas id="raceCanvas" width="800" height="400"></canvas>
+    <div id="leaderboard">
+      <h3>🏆 August Leaderboard</h3>
+      <div id="ranks"></div>
+    </div>
+  </div>
+
+  <!-- FIREBASE MODULE SCRIPT -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js";
+    import { 
+      getDatabase, 
+      ref, 
+      set, 
+      push, 
+      remove, 
+      update, 
+      onValue, 
+      onDisconnect 
+    } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-database.js";
+
+    // --- YOUR FIREBASE CONFIGURATION ---
+    const firebaseConfig = {
+      apiKey: "AIzaSyCvKypeR1gqLb96SlT5-4ebCXSJjl768yE",
+      authDomain: "habitracer-1d4ed.firebaseapp.com",
+      databaseURL: "https://habitracer-1d4ed-default-rtdb.firebaseio.com",
+      projectId: "habitracer-1d4ed",
+      storageBucket: "habitracer-1d4ed.firebasestorage.app",
+      messagingSenderId: "97473637086",
+      appId: "1:97473637086:web:b979c8356131d4b82f304f"
+    };
+
+    // Initialize Firebase & Database
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    const playersRef = ref(db, 'players');
+
+    // --- GAME STATE ---
+    let myPlayerId = null;
+    let distance = 0;
+    const FINISH_LINE = 1000;
+
+    // --- EVENT LISTENERS ---
+    document.getElementById('btn-host').addEventListener('click', setupHost);
+    document.getElementById('btn-player').addEventListener('click', setupPlayerView);
+    document.getElementById('btn-start-racing').addEventListener('click', joinGame);
+    document.getElementById('tap-area').addEventListener('click', handleTap);
+
+    // --- ROLE SETUP ---
+    function setupHost() {
+      document.getElementById('role-select').classList.add('hidden');
+      document.getElementById('host-container').classList.remove('hidden');
+      
+      // Clear previous lobby data when host starts a new game
+      remove(playersRef); 
+      startHostCanvas();
+    }
+
+    function setupPlayerView() {
+      document.getElementById('role-select').classList.add('hidden');
+      document.getElementById('player-join').classList.remove('hidden');
+    }
+
+    function joinGame() {
+      const nameInput = document.getElementById('player-name').value.trim();
+      if (!nameInput) return alert("Please enter your name!");
+
+      const newPlayerRef = push(playersRef);
+      myPlayerId = newPlayerRef.key;
+
+      // Add player to Firebase
+      set(newPlayerRef, {
+        name: nameInput,
+        distance: 0
+      });
+
+      // Remove player automatically if they leave
+      onDisconnect(newPlayerRef).remove();
+
+      document.getElementById('player-join').classList.add('hidden');
+      document.getElementById('player-game').classList.remove('hidden');
+    }
+
+    // --- PLAYER CONTROLS ---
+    function handleTap() {
+      if (!myPlayerId || distance >= FINISH_LINE) return;
+
+      // Random speed gain per tap (simulate jumping hurdles/grabbing habits)
+      let speed = Math.floor(Math.random() * 15) + 10; 
+      distance = Math.min(FINISH_LINE, distance + speed);
+
+      document.getElementById('player-dist').innerText = distance;
+
+      // Sync distance with database
+      const myRef = ref(db, `players/${myPlayerId}`);
+      update(myRef, { distance: distance });
+
+      if (distance >= FINISH_LINE) {
+        const tapArea = document.getElementById('tap-area');
+        tapArea.innerText = "🏆 FINISHED! August Conquered!";
+        tapArea.style.background = "#22c55e";
+      }
+    }
+
+    // --- HOST DISPLAY ENGINE ---
+    function startHostCanvas() {
+      const canvas = document.getElementById('raceCanvas');
+      const ctx = canvas.getContext('2d');
+      let playersData = {};
+
+      // Realtime listener for all connected players
+      onValue(playersRef, (snapshot) => {
+        playersData = snapshot.val() || {};
+        updateLeaderboard(playersData);
+      });
+
+      function render() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Draw Finish Line
+        ctx.fillStyle = "#ef4444";
+        ctx.fillRect(750, 0, 10, canvas.height);
+        ctx.fillStyle = "#fff";
+        ctx.font = "bold 12px sans-serif";
+        ctx.fillText("FINISH", 755, 20);
+
+        let playersArray = Object.values(playersData);
+        let laneHeight = canvas.height / Math.max(playersArray.length, 1);
+
+        playersArray.forEach((player, index) => {
+          let xProgress = (player.distance / FINISH_LINE) * 720;
+          let yPos = index * laneHeight + laneHeight / 2;
+
+          // Draw Lane Divider
+          ctx.strokeStyle = "#334155";
+          ctx.beginPath();
+          ctx.moveTo(0, index * laneHeight);
+          ctx.lineTo(canvas.width, index * laneHeight);
+          ctx.stroke();
+
+          // Draw Player Icon
+          ctx.fillStyle = "#38bdf8";
+          ctx.beginPath();
+          ctx.arc(xProgress + 20, yPos, 12, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Draw Player Name
+          ctx.fillStyle = "#fff";
+          ctx.font = "14px sans-serif";
+          ctx.fillText(player.name, xProgress + 38, yPos + 4);
+        });
+
+        requestAnimationFrame(render);
+      }
+
+      render();
+    }
+
+    function updateLeaderboard(playersData) {
+      const ranksContainer = document.getElementById('ranks');
+      ranksContainer.innerHTML = "";
+
+      let sorted = Object.values(playersData).sort((a, b) => b.distance - a.distance);
+
+      sorted.forEach((player, idx) => {
+        let div = document.createElement('div');
+        div.className = 'player-rank';
+        div.innerHTML = `<span>#${idx + 1} <b>${player.name}</b></span> <span>${player.distance} m</span>`;
+        ranksContainer.appendChild(div);
+      });
+    }
+  </script>
+</body>
+</html>
