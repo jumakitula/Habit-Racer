@@ -86,7 +86,7 @@
 
   <!-- HOST DISPLAY -->
   <div id="host-container" class="hidden">
-    <div id="timer-display">⏱️ Time Left: 05:00</div>
+    <div id="timer-display">⏱️ Time Left: 03:00</div>
     
     <div style="position: relative;">
       <canvas id="raceCanvas" width="800" height="400"></canvas>
@@ -148,7 +148,7 @@
       remove(playersRef); 
       set(gameStateRef, { ended: false });
       startHostCanvas();
-      startTimer(300); // 300 seconds = 5 minutes
+      startTimer(180); // 180 seconds = 3 minutes
     }
 
     function setupPlayerView() {
@@ -179,7 +179,7 @@
       startArcadeGame();
     }
 
-    // --- 5 MINUTE TIMER ENGINE ---
+    // --- 3 MINUTE TIMER ENGINE ---
     function startTimer(durationSeconds) {
       let timer = durationSeconds;
       const timerDisplay = document.getElementById('timer-display');
@@ -294,7 +294,6 @@
         if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') keys.up = false;
       });
 
-      // Helper function to render a custom Spider-Man Pixel Character
       function drawSpiderMan(p) {
         ctx.save();
         
@@ -302,7 +301,7 @@
         ctx.fillStyle = "#dc2626";
         ctx.fillRect(p.x + 3, p.y, 16, 12);
         
-        // Spider-Man Mask Eyes (White triangular lenses)
+        // Spider-Man Mask Eyes
         ctx.fillStyle = "#ffffff";
         if (!p.facingLeft) {
           ctx.beginPath();
@@ -318,22 +317,22 @@
           ctx.fill();
         }
 
-        // Torso - Red Center & Blue Sides
-        ctx.fillStyle = "#1d4ed8"; // Blue suit sides
+        // Torso
+        ctx.fillStyle = "#1d4ed8";
         ctx.fillRect(p.x + 2, p.y + 12, 18, 10);
-        ctx.fillStyle = "#dc2626"; // Red suit center
+        ctx.fillStyle = "#dc2626";
         ctx.fillRect(p.x + 7, p.y + 12, 8, 10);
 
-        // Black Spider Emblem on Chest
+        // Spider Emblem
         ctx.fillStyle = "#000000";
         ctx.fillRect(p.x + 10, p.y + 15, 2, 4);
         ctx.fillRect(p.x + 8, p.y + 16, 6, 1);
 
-        // Legs (Blue Pants + Red Boots)
-        ctx.fillStyle = "#1d4ed8"; // Blue legs
+        // Legs
+        ctx.fillStyle = "#1d4ed8";
         ctx.fillRect(p.x + 4, p.y + 22, 5, 5);
         ctx.fillRect(p.x + 13, p.y + 22, 5, 5);
-        ctx.fillStyle = "#dc2626"; // Red boots
+        ctx.fillStyle = "#dc2626";
         ctx.fillRect(p.x + 4, p.y + 27, 5, 3);
         ctx.fillRect(p.x + 13, p.y + 27, 5, 3);
 
@@ -439,7 +438,6 @@
           }
         });
 
-        // Render Spider-Man Character
         drawSpiderMan(player);
 
         if (player.vx !== 0) {
@@ -495,7 +493,6 @@
           ctx.lineTo(canvas.width, index * laneHeight);
           ctx.stroke();
 
-          // Draw Spider-Man Icon on host track
           ctx.fillStyle = "#ef4444";
           ctx.beginPath();
           ctx.arc(xProgress + 20, yPos, 12, 0, Math.PI * 2);
